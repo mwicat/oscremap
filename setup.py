@@ -13,7 +13,10 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'Click>=6.0',
+    'bidict',
+    'python-rtmidi',
     'python-osc>=1.7.0',
+    'PyYAML',
 ]
 
 setup_requirements = [
@@ -54,6 +57,7 @@ setup(
     name='oscremap',
     packages=find_packages(include=['oscremap']),
     setup_requires=setup_requirements,
+    package_data={'oscremap': ['data/*']},
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/mwicat/oscremap',

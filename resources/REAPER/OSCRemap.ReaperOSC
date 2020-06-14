@@ -1,0 +1,25 @@
+DEVICE_TRACK_COUNT 1
+DEVICE_SEND_COUNT 1
+DEVICE_RECEIVE_COUNT
+
+DEVICE_FX_PARAM_COUNT 512
+DEVICE_FX_INST_PARAM_COUNT 512
+
+DEVICE_FX_FOLLOWS FOCUSED
+
+FX_NAME s/fx/name
+
+FX_BYPASS b/fx/bypass
+
+FX_OPEN_UI b/fx/openui
+
+FX_PARAM_NAME s/fx/param/@/name
+FX_PARAM_VALUE n/fx/param/@/val s/fx/param/@/str
+
+FX_INST_PARAM_NAME s/fxinst/param/@/name
+FX_INST_PARAM_VALUE n/fxinst/param/@/val
+
+DEVICE_FX_SELECT i/fx/select
+
+DEVICE_PREV_FX t/fx/select/prev
+DEVICE_NEXT_FX t/fx/select/next
