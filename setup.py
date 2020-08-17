@@ -14,6 +14,7 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     'Click>=6.0',
     'bidict',
+    'mido',
     'python-rtmidi',
     'python-osc>=1.7.0',
     'PyYAML',

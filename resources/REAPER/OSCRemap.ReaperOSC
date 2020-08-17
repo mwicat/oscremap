@@ -7,7 +7,13 @@ DEVICE_FX_INST_PARAM_COUNT 512
 
 DEVICE_FX_FOLLOWS FOCUSED
 
-FX_NAME s/fx/name
+DEVICE_TRACK_FOLLOWS LAST_TOUCHED
+DEVICE_TRACK_BANK_FOLLOWS MIXER
+
+TRACK_NAME s/track/name s/track/@/name
+TRACK_NUMBER s/track/number/str s/track/@/number/str
+
+FX_NAME s/fx/name s/fx/@/name
 
 FX_BYPASS b/fx/bypass
 
