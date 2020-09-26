@@ -28,6 +28,7 @@ class OSCProxy(object):
         self.fx_name = ''
         self.learn_active = False
         self.fx_follow = True
+        self.fx_visible = False
 
         self.cfg_global = cfg_global = cfg['global']
         self.cfg_ctl_midi = cfg_ctl_midi = cfg['controller_midi']
@@ -213,10 +214,6 @@ class OSCProxy(object):
         self.init_midi_device_params()
 
     def handle_osc_from_daw(self, addr, *args):
-        #print('OSC RECV: %s %s' % (addr, args))
-        if 'bypass' in addr:
-            print('bypassss', addr)
-
         if addr == '/fx/name':
             fx_name = args[0]
             logger.info('Set FX: %s', fx_name)
@@ -256,8 +253,13 @@ class OSCProxy(object):
                 s = args[0]
                 self.send_osc_to_ctl(
                     f"{prefix}/str", s)
+
         elif addr == '/fx/bypass':
-            print('bypass', args)
+            print('bypass', bool(args[0]))
+            self.bypass_fx = bool(args[0])
+
+        elif addr == '/fx/openui':
+            self.fx_visible = bool(args[0])
 
     def handle_osc_from_ctl(self, addr, *args):
         if addr.startswith('/fx/param/'):
@@ -286,13 +288,36 @@ class OSCProxy(object):
     def toggle_fx_follow(self):
         self.fx_follow = not self.fx_follow
         if self.fx_follow:
-            print('follow focused')
+            logger.info('FX follow: focused')
             self.to_app_client.send_message(
                 "/device/fx/follows/focused", 1)
         else:
-            print('follow device')
+            logger.info('FX follow: device')
             self.to_app_client.send_message(
                 "/device/fx/follows/device", 1)
+
+    def toggle_bypass_fx(self):
+        self.bypass_fx = not self.bypass_fx
+        logger.info('Toggle bypass FX: %s', self.bypass_fx)
+        self.to_app_client.send_message("/fx/bypass", int(self.bypass_fx))
+        self.send_osc_to_ctl("/fx/bypass", int(self.bypass_fx))
+
+    def toggle_fx_ui(self):
+        self.fx_visible = not self.fx_visible
+        logger.info('Toggle FX UI: %s', self.fx_visible)
+        self.to_app_client.send_message("/fx/openui", int(self.fx_visible))
+
+    def toggle_helper_ui(self):
+        logger.info('Toggle proxy UI')
+        self.send_osc_to_ctl('/toggle_ui', 1)
+
+    def select_previous_fx(self):
+        logger.info('Selected prev FX')
+        self.to_app_client.send_message("/fx/select/prev", 1)
+
+    def select_next_fx(self):
+        logger.info('Selected next FX')
+        self.to_app_client.send_message("/fx/select/next", 1)
 
     def handle_midi_from_ctl(self, event, data=None):
         msg, deltatime = event
@@ -301,16 +326,15 @@ class OSCProxy(object):
         if msg[0] == (CONTROL_CHANGE | self.midi_channel_cmd):
             cc, value = msg[1], msg[2]
             if cc == self.cfg_ctl_midi['cc_toggle_ui'] and value == 127:
-                self.send_osc_to_ctl('/toggle_ui', 1)
+                self.toggle_fx_ui()
             elif cc == self.cfg_ctl_midi['cc_bypass_fx'] and value == 127:
-                self.bypass_fx = not self.bypass_fx
-                self.to_app_client.send_message("/fx/bypass", int(self.bypass_fx))
+                self.toggle_bypass_fx()
             elif cc == self.cfg_ctl_midi['cc_prev_fx'] and value == 127:
-                self.to_app_client.send_message("/fx/select/prev", 1)
+                self.select_previous_fx()
             elif cc == self.cfg_ctl_midi['cc_fx_follow'] and value == 127:
                 self.toggle_fx_follow()
             elif cc == self.cfg_ctl_midi['cc_next_fx'] and value == 127:
-                self.to_app_client.send_message("/fx/select/next", 1)
+                self.select_next_fx()
             elif cc == self.cfg_ctl_midi['cc_learn'] and value == 127:
                 self.toggle_learn()
 
@@ -401,6 +425,7 @@ class OSCProxy(object):
         if self.learn_active:
             logger.info('Learn activated')
         else:
+            self.save_fx_maps()
             logger.info('Learn disactivated')
 
         self.learn_source = None
