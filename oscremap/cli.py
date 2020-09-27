@@ -30,8 +30,12 @@ def cli(ctx, debug, loglevel):
     logging.basicConfig(level=loglevel)
 
 
+def get_base_path():
+    return os.path.expanduser('~/oscremap')
+
+
 def get_config_path():
-    return os.path.expanduser('~/.oscremap.yaml')
+    return os.path.join(get_base_path(), 'config.yaml')
 
 
 @cli.command()
@@ -180,7 +184,9 @@ def proxy(config):
             'Configuration "{}" does not exist.'
             ' Please run command "oscremap generate-config" first.')
 
-    osc_proxy = OSCProxy(current_config)
+    fx_maps_path = os.path.join(get_base_path(), 'fxmaps.yaml')
+
+    osc_proxy = OSCProxy(current_config, fx_maps_path)
     osc_proxy.start()
 
     input()

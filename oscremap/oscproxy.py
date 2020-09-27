@@ -19,16 +19,15 @@ from pythonosc.osc_bundle_builder import OscBundleBuilder, IMMEDIATELY
 logger = logging.getLogger(__name__)
 
 
-FX_MAPS_PATH = os.path.expanduser('~/.oscremap_fxmaps.yaml')
-
 
 class OSCProxy(object):
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, fx_maps_path):
         self.fx_name = ''
         self.learn_active = False
         self.fx_follow = True
         self.fx_visible = False
+        self.fx_maps_path = fx_maps_path
 
         self.cfg_global = cfg_global = cfg['global']
         self.cfg_ctl_midi = cfg_ctl_midi = cfg['controller_midi']
@@ -67,7 +66,7 @@ class OSCProxy(object):
             cfg_daw_osc['remote_ip'], cfg_daw_osc['remote_port']
         ))
 
-        self.to_app_client = udp_client.SimpleUDPClient(
+        self.to_daw_client = udp_client.SimpleUDPClient(
             cfg_daw_osc['remote_ip'], cfg_daw_osc['remote_port'])
 
         self.midi_in = rtmidi.MidiIn()
@@ -131,25 +130,27 @@ class OSCProxy(object):
             target=self.consume_send_midi_to_ctl_queue)
 
     def load_fx_maps(self):
-        if not os.path.exists(FX_MAPS_PATH):
+        if not os.path.exists(self.fx_maps_path):
             return {}
 
-        with open(FX_MAPS_PATH) as f:
+        with open(self.fx_maps_path) as f:
             data = yaml.safe_load(f)
+            if data is None:
+                data = {}
             return {
                 fx_name: bidict(fx_map) for fx_name, fx_map in data.items()
             }
 
     def save_fx_maps(self):
-        with open(FX_MAPS_PATH, 'w') as f:
+        with open(self.fx_maps_path, 'w') as f:
             data = {
                 fx_name: dict(fx_map) for fx_name, fx_map in self.fx_maps.items()
             }
             yaml.dump(data, f)
 
     def refresh_fx(self):
-        self.to_app_client.send_message("/fx/select/prev", 1)
-        self.to_app_client.send_message("/fx/select/next", 1)
+        self.to_daw_client.send_message("/fx/select/prev", 1)
+        self.to_daw_client.send_message("/fx/select/next", 1)
 
     def clear(self):
         self.source_target_map.clear()
@@ -278,7 +279,7 @@ class OSCProxy(object):
 
             prefix = f"/fx/param/{target_param}"
             if param_attr == 'val':
-                self.to_app_client.send_message(
+                self.to_daw_client.send_message(
                     f"{prefix}/val", args[0])
         elif addr == '/fx/learn':
             self.toggle_learn()
@@ -289,23 +290,23 @@ class OSCProxy(object):
         self.fx_follow = not self.fx_follow
         if self.fx_follow:
             logger.info('FX follow: focused')
-            self.to_app_client.send_message(
+            self.to_daw_client.send_message(
                 "/device/fx/follows/focused", 1)
         else:
             logger.info('FX follow: device')
-            self.to_app_client.send_message(
+            self.to_daw_client.send_message(
                 "/device/fx/follows/device", 1)
 
     def toggle_bypass_fx(self):
         self.bypass_fx = not self.bypass_fx
         logger.info('Toggle bypass FX: %s', self.bypass_fx)
-        self.to_app_client.send_message("/fx/bypass", int(self.bypass_fx))
+        self.to_daw_client.send_message("/fx/bypass", int(self.bypass_fx))
         self.send_osc_to_ctl("/fx/bypass", int(self.bypass_fx))
 
     def toggle_fx_ui(self):
         self.fx_visible = not self.fx_visible
         logger.info('Toggle FX UI: %s', self.fx_visible)
-        self.to_app_client.send_message("/fx/openui", int(self.fx_visible))
+        self.to_daw_client.send_message("/fx/openui", int(self.fx_visible))
 
     def toggle_helper_ui(self):
         logger.info('Toggle proxy UI')
@@ -313,11 +314,11 @@ class OSCProxy(object):
 
     def select_previous_fx(self):
         logger.info('Selected prev FX')
-        self.to_app_client.send_message("/fx/select/prev", 1)
+        self.to_daw_client.send_message("/fx/select/prev", 1)
 
     def select_next_fx(self):
         logger.info('Selected next FX')
-        self.to_app_client.send_message("/fx/select/next", 1)
+        self.to_daw_client.send_message("/fx/select/next", 1)
 
     def handle_midi_from_ctl(self, event, data=None):
         msg, deltatime = event
@@ -356,7 +357,7 @@ class OSCProxy(object):
                 prefix = f"/fx/param/{target_param}"
 
                 osc_val = value / 127.0
-                self.to_app_client.send_message(
+                self.to_daw_client.send_message(
                     f"{prefix}/val", osc_val)
 
     def set_fx(self, fx_name):
