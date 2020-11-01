@@ -1,0 +1,53 @@
+default:
+  alias: twister
+
+maschine:
+  controller_midi:
+    param_channel: 0
+    cmd_channel: 0
+    input_port: Maschine MK3 Virtual Input
+    output_port: Maschine MK3 Virtual Output
+    cc_param_start: 70
+    cc_toggle_ui: 55
+    cc_learn: 46
+  controller_osc:
+    listen_ip: 127.0.0.1
+    listen_port: 9003
+    remote_ip: 127.0.0.1
+    remote_port: 9004
+  daw_osc:
+    listen_ip: 127.0.0.1
+    listen_port: 9001
+    remote_ip: 127.0.0.1
+    remote_port: 9002
+  global:
+    params: 8
+    rows: 1
+    cols: 8
+
+twister:
+  controller_midi:
+    param_channel: 0
+    cmd_channel: 3
+    input_port: Midi Fighter Twister
+    output_port: Midi Fighter Twister
+    cc_param_start: 0
+    cc_learn: 11
+    cc_prev_fx: 9
+    cc_next_fx: 10
+    cc_toggle_ui: 12
+    cc_bypass_fx: 13
+  controller_osc:
+    listen_ip: 127.0.0.1
+    listen_port: 9003
+    remote_ip: 127.0.0.1
+    remote_port: 9004
+  daw_osc:
+    listen_ip: 127.0.0.1
+    listen_port: 9001
+    remote_ip: 127.0.0.1
+    remote_port: 9002
+  global:
+    params: 16
+    rows: 4
+    cols: 4
