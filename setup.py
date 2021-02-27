@@ -17,6 +17,7 @@ requirements = [
     'mido',
     'python-rtmidi',
     'python-osc>=1.7.0',
+    'PySide2',
     'PyYAML',
 ]
 

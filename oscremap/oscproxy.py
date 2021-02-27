@@ -22,14 +22,15 @@ logger = logging.getLogger(__name__)
 
 class OSCProxy(object):
 
-    def __init__(self, cfg, fx_maps_path):
+    def __init__(self, cfg):
         self.fx_name = ''
         self.learn_active = False
         self.fx_follow = True
         self.fx_visible = False
-        self.fx_maps_path = fx_maps_path
+        self.fx_maps_path = cfg['fx_maps_path']
 
         self.cfg_global = cfg_global = cfg['global']
+
         self.cfg_ctl_midi = cfg_ctl_midi = cfg['controller_midi']
         self.cfg_ctl_osc = cfg_ctl_osc = cfg['controller_osc']
         self.cfg_daw_osc = cfg_daw_osc = cfg['daw_osc']
@@ -85,11 +86,20 @@ class OSCProxy(object):
             cfg_ctl_midi['output_port']
         ))
 
-        self.midi_in_port = in_ports.index(cfg_ctl_midi['input_port'])
+        logger.info('Available input ports: %s', in_ports)
+        try:
+            self.midi_in_port = in_ports.index(cfg_ctl_midi['input_port'])
+        except ValueError:
+            self.midi_in_port = None
+
         self.midi_channel_param = cfg_ctl_midi['param_channel']
         self.midi_channel_cmd = cfg_ctl_midi['cmd_channel']
 
-        self.midi_out_port = out_ports.index(cfg_ctl_midi['output_port'])
+        logger.info('Available output ports: %s', out_ports)
+        try:
+            self.midi_out_port = out_ports.index(cfg_ctl_midi['output_port'])
+        except ValueError:
+            self.midi_out_port = None
 
         self.midi_in.set_callback(self.handle_midi_from_ctl)
 
@@ -120,6 +130,7 @@ class OSCProxy(object):
         self.ctl_osc_thread = threading.Thread(
             target=self.ctl_osc_server.serve_forever)
 
+        self.send_osc_to_internal_queue = Queue()
         self.send_osc_to_ctl_queue = Queue()
         self.send_osc_to_ctl_thread = threading.Thread(
             target=self.consume_ctl_osc_queue)
@@ -137,6 +148,7 @@ class OSCProxy(object):
             data = yaml.safe_load(f)
             if data is None:
                 data = {}
+            logger.info('Loaded maps for fx: {}'.format(','.join(data)))
             return {
                 fx_name: bidict(fx_map) for fx_name, fx_map in data.items()
             }
@@ -149,8 +161,9 @@ class OSCProxy(object):
             yaml.dump(data, f)
 
     def refresh_fx(self):
-        self.to_daw_client.send_message("/fx/select/prev", 1)
-        self.to_daw_client.send_message("/fx/select/next", 1)
+        return
+        self.send_osc_to_daw("/fx/select/prev", 1)
+        self.send_osc_to_daw("/fx/select/next", 1)
 
     def clear(self):
         self.source_target_map.clear()
@@ -215,6 +228,7 @@ class OSCProxy(object):
         self.init_midi_device_params()
 
     def handle_osc_from_daw(self, addr, *args):
+        print('got', addr, args)
         if addr == '/fx/name':
             fx_name = args[0]
             logger.info('Set FX: %s', fx_name)
@@ -241,6 +255,7 @@ class OSCProxy(object):
 
             if param_attr == 'name':
                 name = args[0]
+                print('got fx param', name)
                 self.send_osc_to_ctl(
                     f"{prefix}/name", name)
             if param_attr == 'val':
@@ -279,7 +294,7 @@ class OSCProxy(object):
 
             prefix = f"/fx/param/{target_param}"
             if param_attr == 'val':
-                self.to_daw_client.send_message(
+                self.send_osc_to_daw(
                     f"{prefix}/val", args[0])
         elif addr == '/fx/learn':
             self.toggle_learn()
@@ -290,23 +305,23 @@ class OSCProxy(object):
         self.fx_follow = not self.fx_follow
         if self.fx_follow:
             logger.info('FX follow: focused')
-            self.to_daw_client.send_message(
+            self.send_osc_to_daw(
                 "/device/fx/follows/focused", 1)
         else:
             logger.info('FX follow: device')
-            self.to_daw_client.send_message(
+            self.send_osc_to_daw(
                 "/device/fx/follows/device", 1)
 
     def toggle_bypass_fx(self):
         self.bypass_fx = not self.bypass_fx
         logger.info('Toggle bypass FX: %s', self.bypass_fx)
-        self.to_daw_client.send_message("/fx/bypass", int(self.bypass_fx))
+        self.send_osc_to_daw("/fx/bypass", int(self.bypass_fx))
         self.send_osc_to_ctl("/fx/bypass", int(self.bypass_fx))
 
     def toggle_fx_ui(self):
         self.fx_visible = not self.fx_visible
         logger.info('Toggle FX UI: %s', self.fx_visible)
-        self.to_daw_client.send_message("/fx/openui", int(self.fx_visible))
+        self.send_osc_to_daw("/fx/openui", int(self.fx_visible))
 
     def toggle_helper_ui(self):
         logger.info('Toggle proxy UI')
@@ -314,17 +329,18 @@ class OSCProxy(object):
 
     def select_previous_fx(self):
         logger.info('Selected prev FX')
-        self.to_daw_client.send_message("/fx/select/prev", 1)
+        self.send_osc_to_daw("/fx/select/prev", 1)
 
     def select_next_fx(self):
         logger.info('Selected next FX')
-        self.to_daw_client.send_message("/fx/select/next", 1)
+        self.send_osc_to_daw("/fx/select/next", 1)
 
     def handle_midi_from_ctl(self, event, data=None):
         msg, deltatime = event
         logger.info('MIDI RECV: %s', msg)
 
         if msg[0] == (CONTROL_CHANGE | self.midi_channel_cmd):
+            logger.info('Handling MIDI command')
             cc, value = msg[1], msg[2]
             if cc == self.cfg_ctl_midi['cc_toggle_ui'] and value == 127:
                 self.toggle_fx_ui()
@@ -338,9 +354,9 @@ class OSCProxy(object):
                 self.select_next_fx()
             elif cc == self.cfg_ctl_midi['cc_learn'] and value == 127:
                 self.toggle_learn()
-
-        if msg[0] == (CONTROL_CHANGE | self.midi_channel_param):
+        elif msg[0] == (CONTROL_CHANGE | self.midi_channel_param):
             cc, value = msg[1], msg[2]
+            logger.info('Handling MIDI param CC={}'.format(cc))
 
             if self.cc_param_start <= cc <= self.cc_param_end:
                 source_param = self.midi_cc_param_map[cc]
@@ -352,13 +368,20 @@ class OSCProxy(object):
                 try:
                     target_param = self.source_target_map[source_param]
                 except KeyError:
+                    logger.info('Don\'t know how to map source param {} to target param'.format(
+                        source_param))
                     return
 
                 prefix = f"/fx/param/{target_param}"
 
                 osc_val = value / 127.0
-                self.to_daw_client.send_message(
+                self.send_osc_to_daw(
                     f"{prefix}/val", osc_val)
+            else:
+                logger.info('Out of bounds <{},{}>'.format(
+                    self.cc_param_start, self.cc_param_end))
+        else:
+            logger.info('Unknown message "{}"'.format(msg))
 
     def set_fx(self, fx_name):
         self.fx_name = fx_name
@@ -403,8 +426,16 @@ class OSCProxy(object):
             [CONTROL_CHANGE | channel, cc, val])
 
     def send_osc_to_ctl(self, address, *args):
-        logger.debug('Sending to controller: %s %s', address, args)
-        self.send_osc_to_ctl_queue.put((address, args))
+        logger.info('Sending to controller: %s %s', address, args)
+
+        msg = address, args
+        #self.send_osc_to_ctl_queue.put(msg)
+        self.send_osc_to_internal_queue.put(msg)
+
+    def send_osc_to_daw(self, address, *args):
+        logger.info('Sending to DAW: %s %s', address, args)
+        self.to_daw_client.send_message(address, *args)
+
 
     def start(self):
         self.daw_osc_thread.start()
@@ -412,8 +443,11 @@ class OSCProxy(object):
         self.send_osc_to_ctl_thread.start()
         self.send_midi_to_ctl_thread.start()
 
-        self.midi_in.open_port(self.midi_in_port)
-        self.midi_out.open_port(self.midi_out_port)
+        if self.midi_in_port is not None:
+            self.midi_in.open_port(self.midi_in_port)
+
+        if self.midi_out_port is not None:
+            self.midi_out.open_port(self.midi_out_port)
 
         self.init_osc_device()
         self.init_midi_device()

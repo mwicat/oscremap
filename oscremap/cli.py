@@ -11,7 +11,10 @@ import mido
 import rtmidi
 import yaml
 
+from pythonosc import udp_client
+
 from .oscproxy import OSCProxy
+from .qoscremap.qoscremap import get_app, get_window
 
 
 logger = logging.getLogger(__name__)
@@ -128,7 +131,24 @@ def ls_midi():
         click.echo('- {}'.format(port))
 
 
-def parse_config():
+@cli.command()
+@click.option('-c', '--config', help='Configuration name to use',
+              default='default')
+@click.argument('addr')
+@click.argument('args')
+def send_osc(config, addr, args):
+    """
+    List available midi input and output ports
+    """
+    current_config = get_config(config)
+
+    cfg_daw_osc = current_config['daw_osc']
+    ctl_osc_client = udp_client.SimpleUDPClient(
+        cfg_daw_osc['listen_ip'], cfg_daw_osc['listen_port'])
+    ctl_osc_client.send_message(addr, eval(args))
+
+
+def parse_config_file():
     config_path = get_config_path()
     logger.info('Reading configuration from {}'.format(config_path))
     if not os.path.exists(config_path):
@@ -143,7 +163,7 @@ def ls_configs():
     """
     List available configs
     """
-    cfg = parse_config()
+    cfg = parse_config_file()
     click.echo('Available configs:')
     for config in cfg:
         print(' - {}'.format(config))
@@ -151,7 +171,7 @@ def ls_configs():
 
 @cli.command()
 @click.argument('port')
-def monitor(port):
+def monitor_midi(port):
     """
     Monitor given midi input port for activity
     """
@@ -162,34 +182,58 @@ def monitor(port):
         click.echo(msg)
 
 
-@cli.command()
-@click.option('-c', '--config', help='Configuration name to use',
-              default='default')
-def proxy(config):
-    """
-    Start proxy between application and device.
-    """
-    cfg = parse_config()
-
-    current_config = cfg.get(config)
+def get_config(config_name):
+    cfg = parse_config_file()
+    current_config = cfg.get(config_name)
 
     while current_config is not None and 'alias' in current_config:
-        config = current_config['alias']
-        current_config = cfg.get(config)
+        config_name = current_config['alias']
+        current_config = cfg.get(config_name)
 
-    logger.info('Loaded config {}'.format(config))
+    logger.info('Loaded config "{}"'.format(config_name))
 
     if current_config is None:
         click.fail(
             'Configuration "{}" does not exist.'
-            ' Please run command "oscremap generate-config" first.')
+            ' Please run command "oscremap generate-config" first.'.format(
+                config_name))
 
-    fx_maps_path = os.path.join(get_base_path(), 'fxmaps.yaml')
+    current_config['fx_maps_path'] = os.path.join(
+        get_base_path(), 'fxmaps', '{}.yaml'.format(config_name))
 
-    osc_proxy = OSCProxy(current_config, fx_maps_path)
-    osc_proxy.start()
+    return current_config
 
-    input()
+
+@cli.command()
+@click.option('-c', '--config',
+              multiple=True, default=["default"],
+              help='Configuration name to use')
+def proxy(config):
+    """
+    Start proxy between application and device.
+    """
+
+    app = get_app()
+    windows = []
+    osc_proxy_list = []
+
+    for cfg in config:
+        current_config = get_config(cfg)
+
+        osc_proxy = OSCProxy(current_config)
+        osc_proxy.start()
+        osc_proxy_list.append(osc_proxy)
+
+        window = get_window(
+            current_config, osc_proxy.send_osc_to_internal_queue)
+        windows.append(window)
+
+    def on_close():
+        pass  #message_server_thread.stop()
+
+    app.lastWindowClosed.connect(on_close)
+
+    sys.exit(app.exec_())
 
 
 def main():
